@@ -5,46 +5,53 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "pipes_n_signals.h"
 // #include <sys/stat.h>
-#define MAX_BUF_SIZE 20
 
-int msg_count = 0;
-
-static void sigHandler(int sig)
+static void handler(int sig)
 {
     if(sig == SIGUSR2)
     {
         
         printf("Number of messages exchanged between C1 and C2: %d\n", msg_count);
-        kill(0, SIGINT);
-        exit(1);
+        fflush(NULL);
+        kill(0, SIGTERM);
+        // exit(1);
     }
     else if(sig == SIGUSR1)
     {
         msg_count++;
-        perror("msg_count");
+        // printf("msg_count %d\n", msg_count);
     }
 }
 
 int main(int argc, char *argv[])
 {
-    // int m = atoi(argv[1]);
-    // int n = atoi(argv[2]);
-    char buf_m[MAX_BUF_SIZE];
-    char buf_m_by_n[MAX_BUF_SIZE];
     int m = atoi(argv[1]);
     int n = atoi(argv[2]);
-    buf_m[MAX_BUF_SIZE - 1] = '\0';
-    buf_m_by_n[MAX_BUF_SIZE - 1] = '\0';
-
-    strcpy(buf_m, argv[1]);
-    strcpy(buf_m_by_n, argv[2]);
 
     int pipe1_2[2];     // send data from c1 to c2
     int pipe2_1[2];     // send data from c2 to c1
 
     pipe(pipe1_2);
     pipe(pipe2_1);
+
+    struct sigaction sa;
+    sa.sa_handler = handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+
+    if (sigaction(SIGUSR1, &sa, NULL) == -1)
+    {
+        perror("sigHandler not applied correctly\n");
+        exit(1);
+    }
+
+    if (sigaction(SIGUSR2, &sa, NULL) == -1)
+    {
+        perror("sigHandler not applied correctly\n");
+        exit(1);
+    }   
 
     pid_t pid_c1 = fork();
     pid_t pid_c2 = -2;
@@ -55,16 +62,8 @@ int main(int argc, char *argv[])
         exit(1);
     }
     if(pid_c1 != 0)
-    {
-        // printf("Process with pid %d entering\n", getpid());
-        
+    {   
         pid_c2 = fork();
-
-        if(pid_c2 != 0){
-            // printf("Parent's pid is %d\n", getpid());
-            // printf("First Child's pid is %d\n", pid_c1);
-            // printf("Second Child's pid is %d\n", pid_c2);
-        }
     }
 
     if(pid_c2 == -1)
@@ -80,38 +79,19 @@ int main(int argc, char *argv[])
         close( pipe1_2[1] );
         close( pipe2_1[0] );
         close( pipe2_1[1] );
-
-
-        if( (signal(SIGUSR1, sigHandler) == SIG_ERR) )
-        {
-            perror("sigHandler not applied correctly\n");
-            exit(1);
-        }
-
-        if(signal(SIGUSR2, sigHandler) == SIG_ERR) 
-        {
-            perror("sigHandler not applied correctly\n");
-            exit(1);
-        }   
     }
 
     if( (pid_c1 == 0) && (pid_c2 != 0) )//child c1
     {
-        // printf("I have pid %d\n", getpid());
-    // }
         close( pipe1_2[0] );    //close read of pipe1_2
         close( pipe2_1[1] );    //close write of pipe2_1
         while (1)
         {
-            write( pipe1_2[1], &m , strlen(buf_m) );
+            write( pipe1_2[1], &m , sizeof(m) );
             
-            // printf("process %d wrote %s\n", getpid(), buf_m);
-
             kill(getppid(), SIGUSR1);
 
-            read( pipe2_1[0], &m, strlen(buf_m) );
-
-            // printf("process %d read %s\n", getpid(), buf_m);
+            read( pipe2_1[0], &m, sizeof(m) );
 
             if( m == 0)
             {
@@ -124,31 +104,19 @@ int main(int argc, char *argv[])
     if(pid_c1 != 0 && pid_c2 == 0)  // child c2
     {
         int t = 0;
-        // printf("I have pid %d\n", getpid());
-    // }
         close( pipe1_2[1] ); //close write of pipe1_2
         close( pipe2_1[0] ); //close read of pipe2_1
 
         while (1)
         {
 
-            read( pipe1_2[0], &t, strlen(buf_m) );
-
-            // printf("process %d read %s\n", getpid(), buf_m);
-            printf("m: %d\n", t);
+            read( pipe1_2[0], &t, sizeof(t) );
             kill(getppid(), SIGUSR1);
-            
-            int m_by_n = atoi(buf_m) / n;
+
             t /= n;
 
-            // sprintf(buf_m_by_n, "%d\0", m_by_n);
-            
-            printf("m/n : %d\n", t);
+            write( pipe2_1[1], &t, sizeof(t) );
 
-            write( pipe2_1[1], &t, strlen(buf_m_by_n) );
-
-            // printf("process %d wrote %s\n", getpid(), buf_m_by_n );
-            
             if( t == 0)
             {
                 kill(getppid(), SIGUSR2);
@@ -157,10 +125,10 @@ int main(int argc, char *argv[])
         }
     }
 
-    // while(1);
     int status;
-    wait(&status);
-    wait(&status);
+    int wpid;
 
+    while ((wpid = wait(&status)) > 0);
+    // sleep(10);
     return 0;
 }
