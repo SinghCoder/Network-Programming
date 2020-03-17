@@ -40,4 +40,5 @@ void print_commands(cmd_pipeline *pipeline);
 void remove_commands(cmd_pipeline *pipeline);
 void execute_commands(cmd_pipeline *pipeline);
 void pipe_processes(struct command *cmd1, struct command *cmd2);
+void close_all_pipes(int pipe_fd[][2], int count);
 #endif

@@ -179,116 +179,88 @@ void remove_commands(cmd_pipeline *pipeline){
     pipeline->num_of_cmds = 0;
 }
 
-void pipe_processes(struct command *cmd1, struct command *cmd2){
-    int pipe_fd[2];
 
-    if( pipe(pipe_fd) == -1)
-        error_exit("pipe creation ");
+void close_all_pipes(int pipe_fd[][2], int count){
 
-    pid_t pid_proc1 = fork();
-
-    if(pid_proc1 == -1)
-        error_exit("fork pid_proc1 ");
-
-    if(pid_proc1 == 0){
-        printf("inside child1 : %s\n", cmd1->argv[0]);
-        if(cmd2){
-            if( close(pipe_fd[0]) == -1)
-                error_exit("close fd proc1 ");
-
-            if( dup2(pipe_fd[1], STDOUT_FILENO) == -1)
-                error_exit("dup2 process 1 pipe ");
-        }
-
-        if(cmd1->input_redirect == true){
-            int fd_input = open(cmd1->input_file, O_RDONLY);
-
-            if(fd_input == -1)
-                error_exit("input file open proc 1 ");
-            
-            if( dup2(fd_input, STDIN_FILENO) == -1)
-                error_exit("dup2 process 1 stdin ");
-        }
-
-        if(cmd1->output_redirect && cmd1->output_append){
-            int fd_output = open(cmd1->output_file, O_APPEND | O_WRONLY | O_CREAT, 0777);
-
-            if(fd_output == -1)
-                error_exit("output file open proc 1 ");
-            
-            if( dup2(fd_output, STDOUT_FILENO) == -1)
-                error_exit("dup2 process 1 outfile ");
-        }
-        else if(cmd1->output_redirect){
-            int fd_output = open(cmd1->output_file, O_TRUNC | O_WRONLY | O_CREAT, 0777);
-
-            if(fd_output == -1)
-                error_exit("output file open proc 1 ");
-
-            if( dup2(fd_output, STDOUT_FILENO) == -1)
-                error_exit("dup2 process 1 outfile ");
-        }
-
-        if( execvp(cmd1->argv[0], cmd1->argv) == -1)
-            error_exit("execvp proc1 ");
+    for(int i = 0; i < count; i++){
+        close(pipe_fd[i][0]);
+        close(pipe_fd[i][1]);
     }
 
-    if(cmd2 == NULL) return;
-    pid_t pid_proc2 = fork();
-
-    if(pid_proc2 == 0){
-        
-        printf("inside child2 : %s\n", cmd2->argv[0]);
-
-        if( close(pipe_fd[1]) == -1)
-            error_exit("close fd proc2 ");
-
-        if( dup2(pipe_fd[0], STDIN_FILENO) == -1)
-            error_exit("dup2 process 2 pipe ");
-        
-        if(cmd2->input_redirect == true){
-            int fd_input = open(cmd2->input_file, O_RDONLY);
-
-            if(fd_input == -1)
-                error_exit("input file open proc 2 ");
-            
-            if( dup2(fd_input, STDIN_FILENO) == -1)
-                error_exit("dup2 process 2 stdin ");
-            
-        }
-        if(cmd2->output_redirect && cmd2->output_append){
-            int fd_output = open(cmd2->output_file, O_APPEND | O_WRONLY | O_CREAT, 0777);
-            
-            if(fd_output == -1)
-                error_exit("output file open proc 2 ");
-            
-            if( dup2(fd_output, STDOUT_FILENO) == -1)
-                error_exit("dup2 process 2 outfile ");
-        }
-        else if(cmd2->output_redirect){
-            int fd_output = open(cmd2->output_file, O_TRUNC | O_WRONLY | O_CREAT, 0777);
-
-            if(fd_output == -1)
-                error_exit("output file open proc 2 ");
-            
-            if( dup2(fd_output, STDOUT_FILENO) == -1)
-                error_exit("dup2 process 2 outfile ");
-        }
-                 
-        if( execvp(cmd2->argv[0], cmd2->argv) == -1)
-            error_exit("execvp proc1 ");
-    }
 }
-
-
 void execute_commands(cmd_pipeline *pipeline){
     struct command *tmp = pipeline->first;
+    int count = pipeline->num_of_cmds;
+    int pipe_fd[count-1][2];
+    for(int i = 0; i < count - 1; i++){
+        if( pipe(pipe_fd[i]) == -1)
+            error_exit("pipe creation ");
+    }
+    int i;
+    struct command *cmd;
+    for(i = 0, cmd = pipeline->first; i < count, cmd != NULL; i++, cmd = cmd->next){
+        pid_t pid = fork();
 
-    while(tmp != NULL){
-        pipe_processes(tmp, tmp->next);
-        tmp = tmp->next;
+        if(pid == -1)
+            error_exit("fork");
+
+        if(pid == 0){
+            if( i != count -1){
+                if( dup2(pipe_fd[i][1], STDOUT_FILENO) == -1)
+                    error_exit("dup2 pipe write ");
+            }
+            if( i != 0){
+                if( dup2(pipe_fd[i-1][0], STDIN_FILENO) == -1)
+                    error_exit("dup2 pipe read ");
+            }
+
+            if(cmd->input_redirect == true){
+                int fd_input = open(cmd->input_file, O_RDONLY);
+
+                if(fd_input == -1)
+                    error_exit("input file open proc 1 ");
+                
+                if( dup2(fd_input, STDIN_FILENO) == -1)
+                    error_exit("dup2 process 1 stdin ");
+                
+                if( close(fd_input) == -1)
+                    error_exit("close input redirection proc 1 ");
+            }
+
+            if(cmd->output_redirect && cmd->output_append){
+                int fd_output = open(cmd->output_file, O_APPEND | O_WRONLY | O_CREAT, 0777);
+
+                if(fd_output == -1)
+                    error_exit("output file open proc 1 ");
+                
+                if( dup2(fd_output, STDOUT_FILENO) == -1)
+                    error_exit("dup2 process 1 outfile ");
+                
+                if( close(fd_output) == -1)
+                    error_exit("close output redirection proc 1 ");
+            }
+            else if(cmd->output_redirect){
+                int fd_output = open(cmd->output_file, O_TRUNC | O_WRONLY | O_CREAT, 0777);
+
+                if(fd_output == -1)
+                    error_exit("output file open proc 1 ");
+
+                if( dup2(fd_output, STDOUT_FILENO) == -1)
+                    error_exit("dup2 process 1 outfile ");
+                
+                if( close(fd_output) == -1)
+                    error_exit("close output redirection proc 1 ");
+            }
+
+            close_all_pipes(pipe_fd, count-1);
+
+            if( execvp(cmd->argv[0], cmd->argv) == -1)
+                error_exit("execvp proc1 ");
+   
+        }
     }
 
-    int status = 0;
-    while(waitpid(-1, &status, 0) > 0);
+    close_all_pipes(pipe_fd, count-1);
+    // int status = 0;
+    while(waitpid(-1, NULL , 0) > 0);
 }
