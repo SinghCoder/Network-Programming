@@ -29,13 +29,20 @@ int main()
     size_t size = 0;
     pid_t pid;
     // setvbuf(stdout, NULL, 0, 0);
+    cmd_pipeline pipeline;
+    pipeline.first = NULL;
+    pipeline.last = NULL;
+    pipeline.num_of_cmds = 0;
     for(;;)
     {
         printf("$> ");
         getline(&input, &size, stdin);
-        parse_input(input);
-        // print_commands();
-        fflush(stdout);
+        create_pipeline(input, &pipeline);
+        // print_commands(&pipeline);
+        execute_commands(&pipeline);
+        remove_commands(&pipeline);
+        // printf("\n");
+        // fflush(stdout);
     }
 
     signal(SIGINT, &terminate);
