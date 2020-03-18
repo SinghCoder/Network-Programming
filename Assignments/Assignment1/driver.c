@@ -25,7 +25,10 @@ void terminate(int signo)
 }
 int main()
 {
+    setvbuf(stdout, NULL, _IONBF, 0);
     input = NULL;
+    shm_num = 0;
+    tcp_sock_num = 0;
     size_t size = 0;
     pid_t pid;
     // setvbuf(stdout, NULL, 0, 0);
@@ -35,8 +38,9 @@ int main()
     pipeline.num_of_cmds = 0;
     for(;;)
     {
-        printf("$> ");
+        printf("SinghCoder> ");
         getline(&input, &size, stdin);
+        if(!input || !strcmp(input, "\n")) continue;
         create_pipeline(input, &pipeline);
         // print_commands(&pipeline);
         execute_commands(&pipeline);
