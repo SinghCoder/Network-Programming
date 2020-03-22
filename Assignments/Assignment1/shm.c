@@ -11,50 +11,38 @@
 
 int main(int argc, char *argv[])
 {
-    printf("inside shm.c\n\n");
-    int shmid = atoi(argv[1]);
-    int offset = atoi(argv[2]);
-    int type = atoi(argv[3]);
+    int shmid = atoi(argv[1]);  // id of shared memory where r/w to be performed
+    int type = atoi(argv[2]);   // operation type SHM_WRITE / SHM_READ
     
-    for(int i = 0; i < argc; i++){
-        printf("argv[%d] : %s\n", i, argv[i]);  
-    }
-
-    struct shmid_ds shm_info;
-    if( shmctl(shmid, IPC_STAT, &shm_info) == -1){
-        error_exit("shmctl ");
-    }
-
-    void *shm_addr = shmat(shmid, NULL, 0);
+    void *shm_addr = shmat(shmid, NULL, 0); //attach shared mem
 
     if(shm_addr == (void*)-1){
         error_exit("shmat ");
     }
 
-    char *buffer = (char*)shm_addr;
-    
-    // if( ((buffer - (char*)shm_addr) * sizeof(char)) >= shm_info.shm_segsz){
-    //     error_exit("shm full");
-    // }
-    FILE *fptr = fopen("tmp.txt", "w");
+    int offset = *(int *)shm_addr;          // offset to write at is stored in first integer location of shared mem
 
+    char *buffer;
+    size_t size = BUFFERSIZE;
     if(type == SHM_WRITE){
-            size_t sz;
-            while((sz = fread(buffer, BUFFERSIZE, 1, stdin))){
-                fprintf(stdout, "%s", buffer);
-            }
+        buffer = (char*)( shm_addr + sizeof(int) + offset);   // write after offset
+        size_t sz;
+
+        while((sz = getline(&buffer, &size, stdin)) != -1){
+            
+            *(int *)shm_addr += sz;     // update offset value
+
+            fprintf(stdout, "%s", buffer);
+            buffer = buffer + sz;       // go to end of data
         }
+
+    }
     else{
-        // fprintf(stdout)
-        // fileno()
-        // printf("dakljsfkj;lasdkllllllllll\n");
-        // fprintf(fptr, "=======asdahj,.hl;gjkwaehvjk====\n");
+        buffer = (char*)(shm_addr + sizeof(int));
         printf("%s", buffer);
     }
-
-    fclose(fptr);
    
-   if(shmdt(shm_addr) == -1)   
+    if(shmdt(shm_addr) == -1)   
         error_exit("shmdt");
     
     return 0;
