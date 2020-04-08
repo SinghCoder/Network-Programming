@@ -1,9 +1,13 @@
 #include "poll_n_server.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <strings.h>
+#include <unistd.h>
+#include <sys/types.h>
 #include "poll.h"
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 
 
 int main(int argc, char *argv[])
@@ -28,10 +32,9 @@ int main(int argc, char *argv[])
         poll_fds[i].events = POLLIN;
     }
 
+    listen_sockfd = socket(AF_INET, SOCK_STREAM, 0);
     poll_fds[num_of_clients].fd = listen_sockfd;
     poll_fds[num_of_clients].events = POLLIN;
-
-    listen_sockfd = socket(AF_INET, SOCK_STREAM, 0);
     bzero(&server_addr, sizeof(struct sockaddr_in));
 
     server_addr.sin_family = AF_INET;
@@ -43,9 +46,10 @@ int main(int argc, char *argv[])
 
     int poll_status;
     int num_ready = 0;
+    char buffer[MAX_BFR_SIZE];
 
     for( ; ; ){
-        poll_status = poll(poll_fds, num_of_clients, TIMEOUT_MS);
+        poll_status = poll(poll_fds, num_of_clients + 1, TIMEOUT_MS);
 
         if(poll_status == -1){
             perror("poll");
@@ -58,13 +62,15 @@ int main(int argc, char *argv[])
         }
 
         num_ready = poll_status;
-
+        int cli_len = sizeof(client_addr);
         if(poll_fds[num_of_clients].revents & POLLIN)  // listening socket is readable
-            conn_sockfd = accept(listen_sockfd, (struct sockaddr *)&client_addr, sizeof(client_addr));
+            conn_sockfd = accept(listen_sockfd, (struct sockaddr *)&client_addr, &cli_len);
         
         int i;
 
         for(i = 0; i < num_of_clients; i++){
+            if(poll_fds[i].fd == conn_sockfd)
+                break;
             if(poll_fds[i].fd == -1){
                 poll_fds[i].fd = conn_sockfd;
                 break;
@@ -81,16 +87,32 @@ int main(int argc, char *argv[])
         }
 
         for(i = 0; i < num_of_clients; i++){
-            if(poll_fds[i].revents & POLLIN){
-                // send data to all other clients
-                for(int j = 0; j < num_of_clients; j++){
-                    if(j != i){
-                        // send(poll_fds[i].fd,)
+            if( (poll_fds[i].fd != -1) && (poll_fds[i].revents & POLLIN)){
+                /**
+                 * @brief The client exists at this fd, and the fd is readable.
+                 */
+                // Read from this client and send to all other
+                int n = read(poll_fds[i].fd, buffer, MAX_BFR_SIZE);
+                if(n == 0){ // this client has closed the connection
+                    close(poll_fds[i].fd);
+                    poll_fds[i].fd = -1;
+                }
+                else{   // Data received, now send
+                    for(int j = 0; j < num_of_clients; j++){
+                        if(j != i){
+                            send(poll_fds[i].fd, buffer, MAX_BFR_SIZE, 0);
+                        }
                     }
                 }
+            }   // end of if
+            if(--num_ready == 0){
+                /**
+                 * @brief No more readable clients
+                 */
+                break;  // No more clients here, poll again
             }
-        }
-    }
+        }   // End of loop checking readability 
+    }   // Main for loop for polling
 
     return 0;
 }
