@@ -189,7 +189,7 @@ function loadImgs(names, callback) {
         let name = names[n];
         result[n] = document.createElement('img');
         result[n].addEventListener('load', onload);
-        result[n].src = "../../static/images/" + name + ".png";
+        result[n].src = "./static/images/" + name + ".png";
     }
 }
 

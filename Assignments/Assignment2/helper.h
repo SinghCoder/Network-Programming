@@ -86,6 +86,8 @@ ssize_t Write(int fd, const void *buf, size_t count);
 
 off_t Lseek(int fd, off_t offset, int whence);
 
+int Close(int fd);
+
 /* epoll functions */
 
 int Epoll_create1(int flags);
@@ -113,5 +115,7 @@ int Pthread_mutex_unlock(pthread_mutex_t *mutex);
 char *tolowerStr(char *str);
 
 char *getMimeType(char *filename);
+
+char *getTimestamp();
 
 #endif

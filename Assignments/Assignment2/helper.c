@@ -96,7 +96,8 @@ ssize_t Read(int fd, void *buf, size_t count){
     int numRead = read(fd, buf, count);
     if( numRead < 0){
         if(errno != EWOULDBLOCK && errno != EAGAIN){
-            errorExit("read failed");
+            if(errno != ECONNRESET && errno != EBADF)
+                errorExit("read failed");
         }
     }
 
@@ -108,11 +109,24 @@ ssize_t Write(int fd, const void *buf, size_t count){
     
     if(numWritten < 0){
         if(errno != EWOULDBLOCK && errno != EAGAIN){
-            errorExit("write failed");
+            if(errno != ECONNRESET && errno != EBADF)
+                errorExit("write failed");
         }
     }
 
     return numWritten;
+}
+
+int Close(int fd){
+
+    printf("Closing %d\n", fd);
+
+    if(close(fd) < 0 ){
+        if(errno != EBADF)
+            errorExit("close failed");
+    }
+
+    return SUCCESS;
 }
 
 off_t Lseek(int fd, off_t offset, int whence){
@@ -262,9 +276,19 @@ char *getMimeType(char *filename){
     if (strcmp(extension, "png") == 0) { 
         return "image/png"; 
     }
-    if(strcmp(extension, "mp3") == 0) {
+    if (strcmp(extension, "mp3") == 0) {
         return "audio/mpeg";
     }
 
     return DEFAULT_MIME_TYPE;
+}
+
+char *getTimestamp(){
+    char *buf = (char*)malloc(sizeof(char) * 1000);
+    time_t now = time(0);
+
+    struct tm tm = *gmtime(&now);
+    strftime(buf, sizeof buf, "%a, %d %b %Y %H:%M:%S %Z", &tm);
+    
+    return buf;
 }

@@ -2,7 +2,7 @@
 
 pthread_mutex_t msgqLock = PTHREAD_MUTEX_INITIALIZER;
 
-#define respMsgHeaderTemp "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n"
+#define respMsgHeaderTemp "HTTP/1.1 %d %s\r\nDate: %s\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n"
 
 void *processClients( void *input){
     int msqid = *(int *)input;
@@ -28,13 +28,14 @@ void *processClients( void *input){
             {
                 printf("reading request\n");
                 int numRead = Read(msg.sockfd, clientPtr->friptr, &(clientPtr->fr[BUFFERSIZE]) - clientPtr->friptr);
-
+                printf("req is : %s\n", clientPtr->fr);
                 if(numRead == 0){
-                    close(msg.sockfd);
+                    Close(msg.sockfd);
                     continue;
                 }
                 else if(numRead < 0){
-                    Msgsnd(msqid, &msg, sizeof(int), /* msgflags = */ 0);
+                    if(errno != ECONNRESET && errno != EBADF)
+                        Msgsnd(msqid, &msg, sizeof(int), /* msgflags = */ 0);
                     continue;
                 }
                 else{
@@ -99,7 +100,7 @@ void *processClients( void *input){
                     Lseek(clientPtr->fd, currOffset, SEEK_SET);
 
                     if(currOffset == clientPtr->payloadSize){
-                        clientPtr->readCompletely = true;
+                        clientPtr->readCompletely = true;                        
                     }
 
                     clientPtr->currState = WRITING_HEADER;
@@ -113,6 +114,9 @@ void *processClients( void *input){
 
                     clientPtr->currState = WRITING_BODY;
                 }
+
+                if(clientPtr->readCompletely)
+                    Close(clientPtr->fd);
             }
             break;
 
@@ -120,18 +124,24 @@ void *processClients( void *input){
             {
                 printf("Writing header\n");
 
-                snprintf(clientPtr->hdriptr, BUFFERSIZE, respMsgHeaderTemp, getMimeType(clientPtr->filepath + 2 /*2 is to skip ./ */), clientPtr->payloadSize);
+                if(clientPtr->fileExists)
+                    snprintf(clientPtr->hdriptr, BUFFERSIZE, respMsgHeaderTemp, 200, "OK", getTimestamp(),
+                                getMimeType(clientPtr->filepath + 2 /*2 is to skip ./ */),clientPtr->payloadSize);
+                else
+                    snprintf(clientPtr->hdriptr, BUFFERSIZE, respMsgHeaderTemp, 404, "Not Found", getTimestamp(),
+                                getMimeType(clientPtr->filepath + 2 /*2 is to skip ./ */),clientPtr->payloadSize);
 
                 clientPtr->hdriptr += strlen(clientPtr->hdriptr);
 
                 int numWritten = Write(msg.sockfd, clientPtr->hdroptr, clientPtr->hdriptr - clientPtr->hdroptr);
 
                 if(numWritten < 0) {
-                    Msgsnd(msqid, &msg, sizeof(int), /* msgflags = */ 0);
+                    if(errno != ECONNRESET && errno != EBADF)
+                        Msgsnd(msqid, &msg, sizeof(int), /* msgflags = */ 0);
                     continue;
                 }
                 else if(numWritten == 0) {
-                    close(msg.sockfd);
+                    Close(msg.sockfd);
                     continue;
                 }
                 else{
@@ -152,11 +162,12 @@ void *processClients( void *input){
                 int numWritten = Write(msg.sockfd, clientPtr->tooptr, clientPtr->toiptr - clientPtr->tooptr);
                 
                 if(numWritten < 0){
-                    Msgsnd(msqid, &msg, sizeof(int), /* msgflags = */ 0);
+                    if(errno != ECONNRESET && errno != EBADF)
+                        Msgsnd(msqid, &msg, sizeof(int), /* msgflags = */ 0);
                     continue;
                 }
                 else if(numWritten == 0) {
-                    close(msg.sockfd);
+                    Close(msg.sockfd);
                     continue;
                 }
                 else{
@@ -236,7 +247,7 @@ int main(){
     int cliLen = sizeof(clientAddr);
 
     while(true){
-        numReady = Epoll_wait(epfd, readyList,/* maxevents = */ NUMTHREADS,/* timeout = */ -1);
+        numReady = Epoll_wait(epfd, readyList,/* maxevents = */ 20,/* timeout = */ -1);
         
         for(int i = 0; i < numReady; i++){
 
