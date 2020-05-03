@@ -5,23 +5,18 @@ pthread_mutex_t msgqLock = PTHREAD_MUTEX_INITIALIZER;
 #define respMsgHeaderTemp "HTTP/1.1 200 OK\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n"
 
 void *processClients( void *input){
-    // printf("am i executing?\n");
     int msqid = *(int *)input;
     msgqbuf msg;
 
     while(true){
         
-        // printf("Will recive a msg\n");
         Pthread_mutex_lock(&msgqLock);
             Msgrcv(msqid, &msg, sizeof(int), /* msgtyp = */ 0, /* msgflags = */ 0);
         Pthread_mutex_unlock(&msgqLock);
 
-        // printf("Received a message from socket %d\n", msg.sockfd);
-
         clientInfo *clientPtr = searchTable(clientInfoTable, msg.sockfd);
 
-        if(clientPtr == NULL){           
-            // printf("lol!! it was NULL\n"); 
+        if(clientPtr == NULL){
             continue;
         }
 
@@ -31,19 +26,27 @@ void *processClients( void *input){
             
             case READING_REQUEST:
             {
-                // printf("reading request from socket %d\n", msg.sockfd);
-                int numRead = Read(msg.sockfd, clientPtr->fr, BUFFERSIZE);
+                printf("reading request\n");
+                int numRead = Read(msg.sockfd, clientPtr->friptr, &(clientPtr->fr[BUFFERSIZE]) - clientPtr->friptr);
 
                 if(numRead == 0){
                     close(msg.sockfd);
                     continue;
                 }
-                
-                clientPtr->fr[numRead] = '\0';
-                printf("Received request: %s\n", clientPtr->fr);
-                
-                clientPtr->currState = HEADER_PARSING;
-                // insertInTable(clientInfoTable, msg.sockfd, clientPtr);
+                else if(numRead < 0){
+                    Msgsnd(msqid, &msg, sizeof(int), /* msgflags = */ 0);
+                    continue;
+                }
+                else{
+                    clientPtr->friptr += numRead;
+                    char *endPtr = clientPtr->friptr - 1;
+
+                    *(clientPtr->friptr) = '\0';
+
+                    if( (clientPtr->friptr - clientPtr->fr >= 4) && (*endPtr == '\n') && (*(endPtr - 1) == '\r') && (*(endPtr - 2) == '\n') && (*(endPtr - 3) == '\r') ){                
+                        clientPtr->currState = HEADER_PARSING;       
+                    }                    
+                }
             }
             break;
 
@@ -55,20 +58,15 @@ void *processClients( void *input){
                 
                 sscanf(clientPtr->fr, "%[^\n]", firstLine);
 
-
-                // printf("Firstline is : %s\n", firstLine);
-
                 char filepath[FILENAME_LEN];
                 
                 filepath[0] = '.';  // to make it relative to current directory
 
                 sscanf(firstLine + /* skip 'GET '*/4, "%s", filepath + 1 /*1 is to skip the .*/);
-                printf("Filepath is %s\n", filepath);
                 
-                strcpy(clientPtr->filepath, filepath);
+                strncpy(clientPtr->filepath, filepath, FILENAME_LEN);
 
                 clientPtr->currState = READING_DISKFILE;
-                // insertInTable(clientInfoTable, msg.sockfd, clientPtr);
             }
             break;
 
@@ -90,8 +88,9 @@ void *processClients( void *input){
                 printf("Reading diskfile %s\n", clientPtr->filepath);
 
                 int numRead = Read(clientPtr->fd, clientPtr->to, BUFFERSIZE);
-                printf("numRead = %d\n", numRead);
                 clientPtr->numRead = numRead;
+                
+                clientPtr->toiptr += numRead;
 
                 if(clientPtr->writtenHeader == false){
                     int currOffset = Lseek(clientPtr->fd, 0, SEEK_CUR);
@@ -114,40 +113,62 @@ void *processClients( void *input){
 
                     clientPtr->currState = WRITING_BODY;
                 }
-                // insertInTable(clientInfoTable, msg.sockfd, clientPtr);
             }
             break;
 
             case WRITING_HEADER:
             {
-                printf("Writing header\n");                
-                char header[BUFFERSIZE];
-                char length[LINE_SIZE];
+                printf("Writing header\n");
 
-                snprintf(header, BUFFERSIZE, respMsgHeaderTemp, getMimeType(clientPtr->filepath + 2 /*2 is to skip ./ */), clientPtr->payloadSize);
-                printf("header is %s\n", header);
-                Write(msg.sockfd, header, strlen(header));
+                snprintf(clientPtr->hdriptr, BUFFERSIZE, respMsgHeaderTemp, getMimeType(clientPtr->filepath + 2 /*2 is to skip ./ */), clientPtr->payloadSize);
 
-                clientPtr->currState = WRITING_BODY;
-                clientPtr->writtenHeader = true;
-                // insertInTable(clientInfoTable, msg.sockfd, clientPtr);
+                clientPtr->hdriptr += strlen(clientPtr->hdriptr);
+
+                int numWritten = Write(msg.sockfd, clientPtr->hdroptr, clientPtr->hdriptr - clientPtr->hdroptr);
+
+                if(numWritten < 0) {
+                    Msgsnd(msqid, &msg, sizeof(int), /* msgflags = */ 0);
+                    continue;
+                }
+                else if(numWritten == 0) {
+                    close(msg.sockfd);
+                    continue;
+                }
+                else{
+                    clientPtr->hdroptr += numWritten;
+                    if(clientPtr->hdroptr == clientPtr->hdriptr){
+                        clientPtr->hdriptr = clientPtr->hdroptr = clientPtr->header;
+                        clientPtr->currState = WRITING_BODY;
+                        clientPtr->writtenHeader = true;
+                    }
+                }
             }
             break;
 
             case WRITING_BODY:
             {   
                 printf("Writing body\n");
-                printf("Body is : %s\n", clientPtr->to);
                 
-                int numWritten = Write(msg.sockfd, clientPtr->to, clientPtr->numRead);
+                int numWritten = Write(msg.sockfd, clientPtr->tooptr, clientPtr->toiptr - clientPtr->tooptr);
                 
-                printf("numWritten = %d\n", numWritten);
-
-                if(clientPtr->readCompletely)
-                    clientPtr->currState = DONE;
-                else
-                    clientPtr->currState = READING_DISKFILE;
-                // insertInTable(clientInfoTable, msg.sockfd, clientPtr);
+                if(numWritten < 0){
+                    Msgsnd(msqid, &msg, sizeof(int), /* msgflags = */ 0);
+                    continue;
+                }
+                else if(numWritten == 0) {
+                    close(msg.sockfd);
+                    continue;
+                }
+                else{
+                    clientPtr->tooptr += numWritten;
+                    if(clientPtr->tooptr == clientPtr->toiptr){
+                        clientPtr->toiptr = clientPtr->tooptr = clientPtr->to;
+                        if(clientPtr->readCompletely)
+                            clientPtr->currState = DONE;
+                        else
+                            clientPtr->currState = READING_DISKFILE;
+                    }
+                }
             }
             break;
 
@@ -167,13 +188,8 @@ void *processClients( void *input){
                 exit(EXIT_FAILURE);
             }
         }
-
-        // printf("Thread will send msg for next state of client\n");
-        // Pthread_mutex_lock(&msgqLock);
-        // printf("inserting msg into socket for sockfd %d\n", msg.sockfd);
-            Msgsnd(msqid, &msg, sizeof(int), /* msgflags = */ 0);
-        // Pthread_mutex_unlock(&msgqLock);
-        // printf("And sent\n");
+        
+        Msgsnd(msqid, &msg, sizeof(int), /* msgflags = */ 0);
     }
 
     return NULL;
@@ -219,55 +235,51 @@ int main(){
     struct msgqbuf msg;
     int cliLen = sizeof(clientAddr);
 
-    // printf("listenfd : %d\n", listenfd);
-
     while(true){
-        
-        // printf("Waiting for epoll wait\n");
         numReady = Epoll_wait(epfd, readyList,/* maxevents = */ NUMTHREADS,/* timeout = */ -1);
-        // printf("epoll wait returned %d\n", numReady);
         
         for(int i = 0; i < numReady; i++){
 
             if( (readyList[i].data.fd == listenfd) && (readyList[i].events & EPOLLIN) ){
                 connfd = Accept(listenfd, (struct sockaddr *) &clientAddr, &cliLen);
-                // printf("Got connfd as %d\n", connfd);
                 struct epoll_event event;
                 event.data.fd = connfd;
                 event.events = EPOLLIN | EPOLLET;
 
-                // printf("Adding to epoll\n");
+                int status = fcntl(connfd, F_SETFL, fcntl(connfd, F_GETFL, 0) | O_NONBLOCK);
+
+                if (status == -1){
+                    errorExit("fcntl failed");
+                }
                 Epoll_ctl(epfd, EPOLL_CTL_ADD, connfd, &event);
                 
             }
             else if(readyList[i].events & EPOLLIN) {
-                // printf("readyList[i] = %d\n", readyList[i].data.fd);
                                 
                 clientInfo *clientPtr;
                 clientPtr = (clientInfo *) malloc(sizeof(clientInfo));
                 clientPtr->currState = READING_REQUEST;
-                clientPtr->friptr = NULL;
-                clientPtr->froptr = NULL;
-                clientPtr->toiptr = NULL;
-                clientPtr->tooptr = NULL;
+                clientPtr->friptr = clientPtr->fr;
+                clientPtr->froptr = clientPtr->fr;
+                clientPtr->toiptr = clientPtr->to;
+                clientPtr->tooptr = clientPtr->to;
+                clientPtr->hdriptr = clientPtr->header;
+                clientPtr->hdroptr = clientPtr->header;
                 clientPtr->fd = -2;
                 clientPtr->writtenHeader = false;
                 clientPtr->fileExists = false;
-                clientPtr->fileSent = false;
                 clientPtr->payloadSize = 0;
                 clientPtr->readCompletely = false;
 
                 strcpy(clientPtr->filepath, "");
+                strcpy(clientPtr->reqLastfourCharsStr, "");
 
                 insertInTable(clientInfoTable, readyList[i].data.fd, clientPtr);
 
                 msg.mtype = 100;
                 msg.sockfd = readyList[i].data.fd;
 
-                // printf("Adding to msg queue\n");
-                // printf("inserting msg into socket for sockfd %d\n", msg.sockfd);
                 Msgsnd(msgqid, &msg, sizeof(int), /* flag = */ 0);
-                // printf("Added to msg queue\n");
             }
         }
     }

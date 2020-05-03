@@ -92,6 +92,7 @@ int Open(const char *pathname, int flags){
 }
 
 ssize_t Read(int fd, void *buf, size_t count){
+    printf("reading count = %ld\n", count);
     int numRead = read(fd, buf, count);
     if( numRead < 0){
         if(errno != EWOULDBLOCK && errno != EAGAIN){
@@ -107,7 +108,7 @@ ssize_t Write(int fd, const void *buf, size_t count){
     
     if(numWritten < 0){
         if(errno != EWOULDBLOCK && errno != EAGAIN){
-            errorExit("read failed");
+            errorExit("write failed");
         }
     }
 
@@ -260,6 +261,9 @@ char *getMimeType(char *filename){
     }
     if (strcmp(extension, "png") == 0) { 
         return "image/png"; 
+    }
+    if(strcmp(extension, "mp3") == 0) {
+        return "audio/mpeg";
     }
 
     return DEFAULT_MIME_TYPE;

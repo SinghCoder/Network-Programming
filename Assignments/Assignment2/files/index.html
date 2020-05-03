@@ -1,0 +1,70 @@
+<!DOCTYPE html> 
+
+<html>
+<head>
+	<title>CG-Project</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+	<link href="./static/style.css" rel="stylesheet" type="text/css" />
+</head> 
+
+<body> 
+
+	<div id='enter'>
+		<button id='enterbtn' onclick="startgame()">ENTER</button>
+	</div>
+
+	<div id="racer">
+		<div id="speedDiv">
+			<span id="speed"><span id="speed_value" class="value">0</span> mph</span>			
+		</div>
+		<div id='pointsDiv'>
+			<span id="points">0</span>
+		</div>
+		<div class="lifeDiv">
+			<div id="lifeValue" style='width: 100%;'></div>		  
+		</div>
+		<canvas id="canvas">
+			
+		</canvas>
+		<div id="leaderboard">
+			<table>
+				<thead>
+					<tr>
+						<th class="rank">Rank</th>
+						<th class="name">Name</th>
+						<th class="score">Points</th>
+					</tr>
+				</thead>
+				<tbody id="leaderboard-body">
+				</tbody>
+				<tfoot>
+					<tr>
+					  <th></th>
+					  <th id="userRank">1</th>
+					</tr>
+				</tfoot>
+			</table>
+	  	</div>
+	</div>
+
+	<template id="leaderboard-row">
+		<tr>
+		  <td class="rank"></td>
+		  <td class="name"></td>
+		  <td class="score"></td>
+		</tr>
+	</template>
+	
+	<audio id='music' muted loop>
+		<source src="./static/music/racer.mp3">
+	</audio>
+	<audio id='collisionMusic'>
+		<source src="./static/music/collision.mp3">
+	</audio>
+	<audio id='acceleratingMusic' loop>
+		<source src="./static/music/accelerate.mp3">
+	</audio>
+	<script src="./static/script.js"></script>
+
+</body> 
+</html>

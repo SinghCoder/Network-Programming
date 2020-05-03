@@ -18,7 +18,7 @@
 
 #define BUFFERSIZE 30000
 #define LINE_SIZE 100
-#define FILENAME_LEN 20
+#define FILENAME_LEN 100
 #define SUCCESS 1
 #define DEFAULT_MIME_TYPE "application/octet-stream"
 
@@ -31,17 +31,20 @@ typedef struct clientInfo{
     char fr[BUFFERSIZE];
     char to[BUFFERSIZE];
     char filepath[FILENAME_LEN];
+    char header[BUFFERSIZE];
     bool fileExists;
     int fd;
     char *friptr;
     char *froptr;
     char *toiptr;
     char *tooptr;
+    char *hdriptr;
+    char *hdroptr;
     int payloadSize;
     int numRead;
     bool writtenHeader;
-    bool fileSent;
     bool readCompletely;
+    char reqLastfourCharsStr[5];
 } clientInfo;
 
 /* Message queue functions */
