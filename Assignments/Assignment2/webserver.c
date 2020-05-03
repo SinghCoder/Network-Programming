@@ -244,7 +244,7 @@ int main(){
     int numReady = 0;
     int connfd = -1;
     struct msgqbuf msg;
-    int cliLen = sizeof(clientAddr);
+    socklen_t cliLen = sizeof(clientAddr);
 
     while(true){
         numReady = Epoll_wait(epfd, readyList,/* maxevents = */ 20,/* timeout = */ -1);
