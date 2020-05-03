@@ -14,6 +14,7 @@ int main(int argc, char *argv[])
     int shmid = atoi(argv[1]);  // id of shared memory where r/w to be performed
     int type = atoi(argv[2]);   // operation type SHM_WRITE / SHM_READ
     
+    
     void *shm_addr = shmat(shmid, NULL, 0); //attach shared mem
 
     if(shm_addr == (void*)-1){
@@ -25,6 +26,12 @@ int main(int argc, char *argv[])
     char *buffer;
     size_t size = BUFFERSIZE;
     if(type == SHM_WRITE){
+        
+        bool append = (strcmp(argv[3], "APPEND") == 0);
+        
+        if(append == false)
+            offset = 0;
+
         buffer = (char*)( shm_addr + sizeof(int) + offset);   // write after offset
         size_t sz;
 

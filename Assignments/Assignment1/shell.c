@@ -310,6 +310,8 @@ void create_pipeline(char *input, cmd_pipeline *pipeline)
                 shm_cmd->argv[2] = (char*)malloc(sizeof(char) * strlen(opern));
                 strcpy(shm_cmd->argv[2], opern);    // perform a shmem write operation
 
+                shm_cmd->argv[3] = (cmd->output_append == true) ? "APPEND" : "OVERWRITE";
+
                 size++;
                 insert_command(pipeline, shm_cmd);
             }
