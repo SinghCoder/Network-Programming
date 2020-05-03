@@ -23,4 +23,6 @@ int hash(int fd);
 clientInfo *searchTable(hashTable table, int fd);
 
 void insertInTable(hashTable table, int fd, clientInfo *clInfo);
+
+void removeFromTable(hashTable table, int fd);
 #endif

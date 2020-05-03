@@ -44,6 +44,17 @@ int Msgctl(int msqid, int cmd, struct msqid_ds *buf){
     return SUCCESS;
 }
 
+int Socket(int domain, int type, int protocol){
+
+    int sockfd = socket(domain, type, protocol);
+
+    if( sockfd < 0){
+        errorExit("socket failed");
+    }
+
+    return sockfd;
+}
+
 
 int Listen(int sockfd, int backlog){
     if(listen(sockfd, backlog) < 0){
@@ -62,11 +73,22 @@ int Bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen){
 }
 
 int Accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen){
-    if(accept(sockfd, addr, addrlen) < 0){
+    int connfd = accept(sockfd, addr, addrlen);
+    if( connfd < 0){
         errorExit("accept failed");
     }
 
-    return SUCCESS;
+    return connfd;
+}
+
+int Open(const char *pathname, int flags){
+    int fd = open(pathname, flags);
+
+    // if(fd < 0){
+    //     errorExit("open failed");
+    // }
+
+    return fd;
 }
 
 ssize_t Read(int fd, void *buf, size_t count){
@@ -92,8 +114,18 @@ ssize_t Write(int fd, const void *buf, size_t count){
     return numWritten;
 }
 
-int Epoll_create(int size){
-    int epfd = epoll_create(size);
+off_t Lseek(int fd, off_t offset, int whence){
+    off_t offsetVal = lseek(fd, offset, whence);
+
+    if(offsetVal < 0){
+        errorExit("lseek failed");
+    }
+
+    return offsetVal;
+}
+
+int Epoll_create1(int flags){
+    int epfd = epoll_create1(flags);
 
     if(epfd < 0){
         errorExit("epoll_create failed");
@@ -157,4 +189,78 @@ pthread_t Pthread_self(void){
 
 void Pthread_exit(void *retval){
     pthread_exit(retval);
+}
+
+int Pthread_mutex_lock(pthread_mutex_t *mutex){
+
+    int status = pthread_mutex_lock(mutex);
+
+    if(status > 0){
+        errorExitPthread("pthread_create failed", status);
+    }
+
+    return SUCCESS;
+
+}
+
+int Pthread_mutex_unlock(pthread_mutex_t *mutex){
+
+    int status = pthread_mutex_unlock(mutex);
+
+    if(status > 0){
+        errorExitPthread("pthread_create failed", status);
+    }
+
+    return SUCCESS;
+
+}
+
+char *tolowerStr(char *str){
+    int len = strlen(str);
+
+    for(int i = 0; i < len; i++){
+        str[i] = tolower(str[i]);
+    }
+
+    return str;
+}
+
+char *getMimeType(char *filename){
+    char *extension = strchr(filename, '.');
+
+    if(extension == NULL){
+        return DEFAULT_MIME_TYPE;
+    }
+
+    extension = extension + 1; /* skip . */
+    extension = tolowerStr(extension);
+
+    printf("extension is %s\n", extension);
+
+    if (strcmp(extension, "html") == 0 || strcmp(extension, "htm") == 0) { 
+        return "text/html"; 
+    }
+    if (strcmp(extension, "jpeg") == 0 || strcmp(extension, "jpg") == 0) { 
+        return "image/jpg"; 
+    }
+    if (strcmp(extension, "css") == 0) { 
+        return "text/css"; 
+    }
+    if (strcmp(extension, "js") == 0) { 
+        return "application/javascript"; 
+    }
+    if (strcmp(extension, "json") == 0) { 
+        return "application/json"; 
+    }
+    if (strcmp(extension, "txt") == 0) { 
+        return "text/plain"; 
+    }
+    if (strcmp(extension, "gif") == 0) { 
+        return "image/gif"; 
+    }
+    if (strcmp(extension, "png") == 0) { 
+        return "image/png"; 
+    }
+
+    return DEFAULT_MIME_TYPE;
 }
