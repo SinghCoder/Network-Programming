@@ -2,6 +2,7 @@
 #include "helper.h"
 #include "server.h"
 
+volatile int turn = 0;
 int listenfd;
 int connfd;
 char buffer[BUFFERSIZE];
@@ -75,10 +76,41 @@ clientsInfo *removeClient(clientsInfo *clients, int fd, hashTable table){
     return clients;
 }
 
+void alarmHandler(int signo)
+{
+  clientNode *temp = clientsList->firstClient;
+
+  // printf("Printing clients list\n");
+  if(turn == 1) {
+    while(temp){
+        if(temp->helloSent) {
+          if(temp->helloRcvd) {
+            temp->helloSent = false;
+            temp->helloRcvd = false;
+          }
+          else {
+            Close(temp->fd);
+          }
+        }
+      
+      temp = temp->nextClient;
+    }
+  }
+  else {
+    while(temp){
+      Write(temp->fd, "hello", strlen("hello"));
+      temp->helloSent = true;
+      temp = temp->nextClient;
+    }
+  }
+  
+  turn = 1 - turn;
+}
+
 void printClients(clientsInfo *clients){
     clientNode *temp = clients->firstClient;
 
-    printf("Printing clients list\n");
+    // printf("Printing clients list\n");
     while(temp){
         printf("Client: %d\n", temp->fd);
         temp = temp->nextClient;
@@ -91,7 +123,7 @@ void sendToAllExceptSender(clientsInfo *clients, int fd, char *msg){
     
     while(temp){
         
-        if(temp->fd != fd){
+        if(temp->fd != fd && strcmp(msg, "hello") != 0){  // if it is not a response to my hello
             Write(temp->fd, msg, strlen(msg));
         }
 
@@ -101,7 +133,7 @@ void sendToAllExceptSender(clientsInfo *clients, int fd, char *msg){
 }
 
 void sigioListenfdHandler(int sig, siginfo_t *siginfo, void *context){
-    printf("connectin? no : %d, for fd : %d, event_band : %ld\n", siginfo->si_signo, (int)siginfo->si_fd, (long)siginfo->si_band);
+    // printf("connectin? no : %d, for fd : %d, event_band : %ld\n", siginfo->si_signo, (int)siginfo->si_fd, (long)siginfo->si_band);
     fflush(stdout);
 
     if(siginfo->si_code == POLL_IN) {
@@ -111,7 +143,7 @@ void sigioListenfdHandler(int sig, siginfo_t *siginfo, void *context){
         fcntl(connfd, F_SETSIG, SIGRTMIN + 2);
 
         clientsList = insertClient(clientsList, connfd, clientsTable); 
-        printClients(clientsList);
+        // printClients(clientsList);
     }
 
     if(sig == SIGIO){
@@ -127,16 +159,24 @@ void sigioConnfdHandler(int sig, siginfo_t *siginfo, void *context){
         if(numRead == 0){
             Close(siginfo->si_fd);
             clientsList = removeClient(clientsList, siginfo->si_fd, clientsTable);
-            printf("socket %d closed\n", siginfo->si_fd);
-            printClients(clientsList);
+            // printf("socket %d closed\n", siginfo->si_fd);
+            // printClients(clientsList);
         }
         else if(numRead > 0){
             
-            printf("data? no : %d, for fd : %d, event_band : %ld\n", siginfo->si_signo, (int)siginfo->si_fd, (long)siginfo->si_band);
+            // printf("data? no : %d, for fd : %d, event_band : %ld\n", siginfo->si_signo, (int)siginfo->si_fd, (long)siginfo->si_band);
             fflush(stdout);
             buffer[numRead] = '\0';
-            printf("Data from connfd %d is [%d bytes] :%s", connfd, numRead, buffer);
+            // printf("Data from connfd %d is [%d bytes] :%s", connfd, numRead, buffer);
             
+            clientNode *temp = clientsList->firstClient;
+    
+            while(temp){
+                
+                if( temp->fd == siginfo->si_fd ){
+                  temp->helloRcvd = true;
+                }
+            }
             sendToAllExceptSender(clientsList, siginfo->si_fd, buffer);
         }
         else{
@@ -207,6 +247,17 @@ int main(int argc, char *argv[]){
 
     /*Replace SIGIO with RT signal*/
     fcntl(listenfd, F_SETSIG, SIGRTMIN + 1);
+
+
+    struct sigaction sAction;
+
+    sigemptyset(&sAction.sa_mask);
+    sAction.sa_flags = 0;
+    sAction.sa_handler = alarmHandler;
+    sigaction(SIGALRM, &sAction, NULL);
+
+    // create an alarm for 10 seconds
+    alarm(10);
 
     while(true);
 }

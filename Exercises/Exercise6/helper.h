@@ -25,6 +25,8 @@ typedef enum {false, true} bool;
 
 typedef struct clientNode{
     int fd;
+    bool helloSent;
+    bool helloRcvd;
     struct clientNode *nextClient;
     struct clientNode *prevClient;  /* stored to perform deletion in O(1)*/
 } clientNode;
